@@ -665,7 +665,7 @@ class CISCA(object):
         )
         weights_filepath = os.path.join(
             self.logdir,
-            "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.hdf5",
+            "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.weights.h5",
         )
 
         # tracking performance on training and validation test
