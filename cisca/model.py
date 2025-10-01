@@ -139,7 +139,10 @@ class CISCA(object):
         #New data_folder location put directly
         self.data_folder = "/kaggle/input/d/jayantibhattacharya/cytodark0/20x/256x256"
 
-        
+        self.valid_data_folder = "/kaggle/input/d/jayantibhattacharya/cytodark0/20x/256x256"
+
+
+        '''
         self.valid_data_folder = os.path.join(
             self.config.root_folder,
             "datasets",
@@ -163,6 +166,8 @@ class CISCA(object):
         self.valid_rgb_contour_mask_folder = os.path.join(
             self.valid_data_folder, "rgbmask"
         )
+        '''
+        
         self.valid_gray4c_contour_mask_folder = os.path.join(
             self.valid_data_folder, "graymask4"
         )
