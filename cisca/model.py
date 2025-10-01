@@ -124,6 +124,7 @@ class CISCA(object):
             "_".join([self.config.dataset_name, self.config.magnification]),
             "_pretrained" if self.config.pretrained else "",
         )
+        '''
         self.data_folder = os.path.join(
             self.config.root_folder,
             "datasets",
@@ -133,6 +134,12 @@ class CISCA(object):
                 [str(self.config.raw_input_side), str(self.config.raw_input_side)]
             ),
         )
+        '''
+
+        #New data_folder location put directly
+        self.data_folder = "/kaggle/input/d/jayantibhattacharya/cytodark0/20x/256x256"
+
+        
         self.valid_data_folder = os.path.join(
             self.config.root_folder,
             "datasets",
