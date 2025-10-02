@@ -677,7 +677,7 @@ class CISCA(object):
             self.logdir, "log__" + self.config.string_id + ".csv"
         )
 
-
+        '''
         weights_filepath = os.path.join(
             self.logdir,
             "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.hdf5",
@@ -688,7 +688,7 @@ class CISCA(object):
             self.logdir,
             "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.weights.h5",
         )
-        '''
+        
 
         # tracking performance on training and validation test
         csv_logger = tf.keras.callbacks.CSVLogger(
