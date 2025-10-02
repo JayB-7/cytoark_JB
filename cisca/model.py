@@ -155,6 +155,7 @@ class CISCA(object):
                 ]
             ),
         )
+        '''
         self.image_folder = os.path.join(self.data_folder, "image")
         self.rgb_contour_mask_folder = os.path.join(self.data_folder, "rgbmask")
         self.gray4c_contour_mask_folder = os.path.join(self.data_folder, "graymask4")
@@ -166,7 +167,7 @@ class CISCA(object):
         self.valid_rgb_contour_mask_folder = os.path.join(
             self.valid_data_folder, "rgbmask"
         )
-        '''
+        
         
         self.valid_gray4c_contour_mask_folder = os.path.join(
             self.valid_data_folder, "graymask4"
