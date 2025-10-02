@@ -720,7 +720,7 @@ class CISCA(object):
             )
 
         self._model_prepared = True
-'''
+    '''
 
     def get_data_generator(
         self,
@@ -734,7 +734,7 @@ class CISCA(object):
         with_original=None,
         with_label_map=None,
     ):
-'''
+    '''
 
     def get_data_generator(
         self,
