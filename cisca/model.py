@@ -720,10 +720,25 @@ class CISCA(object):
             )
 
         self._model_prepared = True
+'''
 
     def get_data_generator(
         self,
         load_mode="valid",
+        partition_index=2,
+        batch_size=1,
+        shuffle=False,
+        steps_per_epoch=None,
+        data_folder=None,
+        random_transformers=None,
+        with_original=None,
+        with_label_map=None,
+    ):
+'''
+
+    def get_data_generator(
+        self,
+        load_mode="train",
         partition_index=2,
         batch_size=1,
         shuffle=False,
