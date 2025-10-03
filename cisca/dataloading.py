@@ -309,10 +309,17 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         for i in range(len(self)):
             yield self[i]
 
-    #CODE 4 #PLEASE WORK
 
+    
+
+    #CODE 4 #PLEASE WORK
     def __getitem__(self, index):
+    """
+    Generate one batch of data for training with proper label splitting for multiple outputs.
+    """
+
         if self.load_mode:
+            # Select batch indexes
             indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
             list_IDs_temp = indexes
             batch_size = len(list_IDs_temp)
@@ -320,33 +327,39 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         else:
             X, y = self._data_generation(batch_size=self.batch_size)
     
-        # If y already split correctly (list, tuple, dict), just return
+        # If labels already properly split (list/tuple/dict), just return
         if isinstance(y, (list, tuple, dict)):
             return X, y
     
-        # If y not a 4D numpy array, return as-is
+        # Check if y is a 4D numpy array (batch, height, width, channels)
         if not isinstance(y, np.ndarray) or y.ndim != 4:
+            # Can't split, return as-is
             return X, y
     
         total_channels = y.shape[-1]
     
+        # Set expected channels per output head
         n_contour = self.n_contour_classes
         n_dist = 4 if self.dist_regression else 0
         n_cell_class = self.n_celltype_classes + 1 if self.n_celltype_classes > 0 else 0
     
         expected_channels = n_contour + n_dist + n_cell_class
+    
+        # Safety check for channel mismatch
         if total_channels < expected_channels:
             raise ValueError(f"Label channels ({total_channels}) less than expected ({expected_channels})")
     
-        y0 = y[..., :n_contour]
-        y1 = y[..., n_contour : n_contour + n_dist]
-        y2 = y[..., n_contour + n_dist : n_contour + n_dist + n_cell_class]
+        # Split labels into three outputs matching your model heads
+        y0 = y[..., :n_contour]  # Contour classes output
+        y1 = y[..., n_contour : n_contour + n_dist]  # Distance regression maps
+        y2 = y[..., n_contour + n_dist : n_contour + n_dist + n_cell_class]  # Cell classification
     
         if not hasattr(self, "_split_warned"):
-            print(f"[DataGeneratorCISCA] Label splitting: y0 {y0.shape}, y1 {y1.shape}, y2 {y2.shape}")
+            print(f"[DataGeneratorCISCA] Label split shapes - y0: {y0.shape}, y1: {y1.shape}, y2: {y2.shape}")
             self._split_warned = True
     
         return X, (y0, y1, y2)
+
 
     
     '''
