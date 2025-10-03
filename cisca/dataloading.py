@@ -375,68 +375,68 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             if sample_weights is not None:
                 return X, y, sample_weights
             return X, y
-
-    # Now we have a stacked-label ndarray: split into two outputs
-    total_channels = int(y.shape[-1])
-
-    # Read splitting info from config (fall back to reasonable defaults)
-    cfg = getattr(self, "config", None)
-    if cfg is not None:
-        n_contour = int(getattr(cfg, "n_contour_classes", 0) or 0)
-        n_celltype = int(getattr(cfg, "n_celltype_classes", 0) or 0)
-        if n_celltype <= 1:
-            # treat <=1 as single-class / absent celltype head
-            n_celltype = 0
-        n_dist = 1 if getattr(cfg, "dist_regression", False) else 0
-    else:
-        n_contour = None
-        n_celltype = 0
-        n_dist = 0
-
-    # if n_contour missing or zero, try to infer from model if available in global
-    if not n_contour:
-        try:
-            # attempt to infer first head channel count from a global ciscamodel if defined
-            model = globals().get("ciscamodel", None)
-            if model is not None:
-                n_contour = int(model.keras_model.outputs[0].shape.as_list()[-1])
-        except Exception:
+    
+        # Now we have a stacked-label ndarray: split into two outputs
+        total_channels = int(y.shape[-1])
+    
+        # Read splitting info from config (fall back to reasonable defaults)
+        cfg = getattr(self, "config", None)
+        if cfg is not None:
+            n_contour = int(getattr(cfg, "n_contour_classes", 0) or 0)
+            n_celltype = int(getattr(cfg, "n_celltype_classes", 0) or 0)
+            if n_celltype <= 1:
+                # treat <=1 as single-class / absent celltype head
+                n_celltype = 0
+            n_dist = 1 if getattr(cfg, "dist_regression", False) else 0
+        else:
             n_contour = None
+            n_celltype = 0
+            n_dist = 0
+    
+        # if n_contour missing or zero, try to infer from model if available in global
+        if not n_contour:
+            try:
+                # attempt to infer first head channel count from a global ciscamodel if defined
+                model = globals().get("ciscamodel", None)
+                if model is not None:
+                    n_contour = int(model.keras_model.outputs[0].shape.as_list()[-1])
+            except Exception:
+                n_contour = None
+    
+        # final fallback: if still unknown, split halfway
+        if not n_contour or n_contour <= 0:
+            n_contour = total_channels // 2
 
-    # final fallback: if still unknown, split halfway
-    if not n_contour or n_contour <= 0:
-        n_contour = total_channels // 2
-
-    expected_second = n_dist + n_celltype
-    if expected_second > 0:
-        # take at most expected_second from remainder; if remainder larger include extras
-        take = min(expected_second, max(0, total_channels - n_contour))
-        y0 = y[..., :n_contour]
-        y1 = y[..., n_contour : n_contour + take]
-        if (n_contour + take) < total_channels:
-            # append extra leftover channels to y1
-            extra = y[..., n_contour + take :]
-            if extra.shape[-1] > 0:
-                y1 = _np.concatenate([y1, extra], axis=-1)
-    else:
-        # no explicit second-head composition known — take the remainder
-        y0 = y[..., :n_contour]
-        y1 = y[..., n_contour:]
-
-    new_y = [y0, y1]
-
-    # Optional: print small debug message (only once) to confirm splitting happened
-    if not hasattr(self, "_patched_split_warned"):
-        print("[DataGeneratorCISCA] auto-split stacked y into two outputs: "
-              f"y0_channels={y0.shape[-1]}, y1_channels={y1.shape[-1]}")
-        try:
-            self._patched_split_warned = True
-        except Exception:
-            pass
-
-    if sample_weights is not None:
-        return X, new_y, sample_weights
-    return X, new_y
+        expected_second = n_dist + n_celltype
+        if expected_second > 0:
+            # take at most expected_second from remainder; if remainder larger include extras
+            take = min(expected_second, max(0, total_channels - n_contour))
+            y0 = y[..., :n_contour]
+            y1 = y[..., n_contour : n_contour + take]
+            if (n_contour + take) < total_channels:
+                # append extra leftover channels to y1
+                extra = y[..., n_contour + take :]
+                if extra.shape[-1] > 0:
+                    y1 = _np.concatenate([y1, extra], axis=-1)
+        else:
+            # no explicit second-head composition known — take the remainder
+            y0 = y[..., :n_contour]
+            y1 = y[..., n_contour:]
+    
+        new_y = [y0, y1]
+    
+        # Optional: print small debug message (only once) to confirm splitting happened
+        if not hasattr(self, "_patched_split_warned"):
+            print("[DataGeneratorCISCA] auto-split stacked y into two outputs: "
+                  f"y0_channels={y0.shape[-1]}, y1_channels={y1.shape[-1]}")
+            try:
+                self._patched_split_warned = True
+            except Exception:
+                pass
+    
+        if sample_weights is not None:
+            return X, new_y, sample_weights
+        return X, new_y
 
 
     def _on_train_start(self):
