@@ -307,9 +307,82 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         for i in range(len(self)):
             yield self[i]
 
+    #CODE 3
+    def __getitem__(self, index):
+        """
+        Generate one batch of data and split labels for multiple outputs.
+    
+        Args:
+            index (int): Batch index.
+    
+        Returns:
+            Tuple of (X, [y0, y1]) where y0 and y1 correspond to different model outputs.
+        """
+        if self.load_mode:
+            indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+            X, y = self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
+        else:
+            X, y = self._data_generation(batch_size=self.batch_size)
+    
+        # If y is already split correctly (tuple, list, dict), just return
+        if isinstance(y, (tuple, list, dict)):
+            return X, y
+    
+        # Check y shape; expect (batch_size, height, width, channels)
+        if not isinstance(y, np.ndarray) or y.ndim != 4:
+            # Can't split; directly return
+            return X, y
+    
+        total_channels = y.shape[-1]
+
+        # Number of channels for first and second output heads
+        n_contour = getattr(self, "n_contour_classes", 0)
+        n_celltype = getattr(self, "n_celltype_classes", 0)
+        if n_celltype <= 1:
+            n_celltype = 0
+        n_dist = 1 if getattr(self, "dist_regression", False) else 0
+    
+        # Defensive fallback if not set
+        if n_contour <= 0:
+            # Try to infer from model if available
+            model = globals().get("ciscamodel", None)
+            if model is not None:
+                try:
+                    n_contour = int(model.keras_model.outputs[0].shape[-1])
+                except Exception:
+                    n_contour = total_channels // 2
+            else:
+                n_contour = total_channels // 2
+    
+        # Calculate how many channels to assign to second output head
+        expected_second = n_dist + n_celltype
+        if expected_second > 0:
+            take = min(expected_second, max(0, total_channels - n_contour))
+            y0 = y[..., :n_contour]
+            y1 = y[..., n_contour : n_contour + take]
+            # If leftover channels, append to y1 as well
+            if (n_contour + take) < total_channels:
+                extra = y[..., n_contour + take :]
+                if extra.shape[-1] > 0:
+                    y1 = np.concatenate([y1, extra], axis=-1)
+        else:
+            y0 = y[..., :n_contour]
+            y1 = y[..., n_contour:]
+
+        # Log the split once
+        if not hasattr(self, "_split_warned"):
+            print(f"[DataGeneratorCISCA] Split labels: y0 channels={y0.shape[-1]}, y1 channels={y1.shape[-1]}")
+            self._split_warned = True
+    
+        return X, (y0, y1)
 
 
     
+   
+    '''
+    # CODE 1
     def __getitem__(self, index):
         "Generate one batch of data"
 
@@ -326,9 +399,10 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             )
         else:
             return self._data_generation(batch_size=self.batch_size)
-
     '''
 
+    '''
+    # CODE 2
     def __getitem__(self, index):
         print("Generate one batch of data")
     
