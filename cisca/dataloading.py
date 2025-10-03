@@ -330,51 +330,51 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
     '''
 
     def __getitem__(self, index):
-    "Generate one batch of data"
-
-    # call original data generation exactly as before
-    if self.load_mode:
-        indexes = self.indexes[
-            index * self.batch_size : (index + 1) * self.batch_size
-        ]
-
-        list_IDs_temp = indexes
-        batch_size = len(list_IDs_temp)
-
-        batch = self._data_generation(
-            batch_size=batch_size, list_IDs_temp=list_IDs_temp
-        )
-    else:
-        batch = self._data_generation(batch_size=self.batch_size)
-
-    # --- Post-process batch to ensure y is a list matching model outputs ---
-    # batch may be: (X, y) or (X, y, sample_weights) or something else.
-    try:
-        import numpy as _np
-    except Exception:
-        # numpy should already be imported at module level; this is a safeguard.
-        import numpy as _np
-
-    # If batch is not a tuple/list, return as-is
-    if not isinstance(batch, (list, tuple)) or len(batch) < 2:
-        return batch
-
-    # Unpack X, y and optionally sample_weights
-    X = batch[0]
-    y = batch[1]
-    sample_weights = batch[2] if len(batch) > 2 else None
-
-    # If y is already a list/tuple/dict, assume it's correct and return unchanged
-    if isinstance(y, (list, tuple, dict)):
-        if sample_weights is not None:
-            return X, y, sample_weights
-        return X, y
-
-    # Only attempt splitting when y is a 4D ndarray (B,H,W,C)
-    if not isinstance(y, _np.ndarray) or y.ndim != 4:
-        if sample_weights is not None:
-            return X, y, sample_weights
-        return X, y
+        print("Generate one batch of data")
+    
+        # call original data generation exactly as before
+        if self.load_mode:
+            indexes = self.indexes[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+    
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+    
+            batch = self._data_generation(
+                batch_size=batch_size, list_IDs_temp=list_IDs_temp
+            )
+        else:
+            batch = self._data_generation(batch_size=self.batch_size)
+    
+        # --- Post-process batch to ensure y is a list matching model outputs ---
+        # batch may be: (X, y) or (X, y, sample_weights) or something else.
+        try:
+            import numpy as _np
+        except Exception:
+            # numpy should already be imported at module level; this is a safeguard.
+            import numpy as _np
+    
+        # If batch is not a tuple/list, return as-is
+        if not isinstance(batch, (list, tuple)) or len(batch) < 2:
+            return batch
+    
+        # Unpack X, y and optionally sample_weights
+        X = batch[0]
+        y = batch[1]
+        sample_weights = batch[2] if len(batch) > 2 else None
+    
+        # If y is already a list/tuple/dict, assume it's correct and return unchanged
+        if isinstance(y, (list, tuple, dict)):
+            if sample_weights is not None:
+                return X, y, sample_weights
+            return X, y
+    
+        # Only attempt splitting when y is a 4D ndarray (B,H,W,C)
+        if not isinstance(y, _np.ndarray) or y.ndim != 4:
+            if sample_weights is not None:
+                return X, y, sample_weights
+            return X, y
 
     # Now we have a stacked-label ndarray: split into two outputs
     total_channels = int(y.shape[-1])
