@@ -307,6 +307,9 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         for i in range(len(self)):
             yield self[i]
 
+
+
+    '''
     def __getitem__(self, index):
         "Generate one batch of data"
 
@@ -323,6 +326,118 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             )
         else:
             return self._data_generation(batch_size=self.batch_size)
+
+    '''
+
+    def __getitem__(self, index):
+    "Generate one batch of data"
+
+    # call original data generation exactly as before
+    if self.load_mode:
+        indexes = self.indexes[
+            index * self.batch_size : (index + 1) * self.batch_size
+        ]
+
+        list_IDs_temp = indexes
+        batch_size = len(list_IDs_temp)
+
+        batch = self._data_generation(
+            batch_size=batch_size, list_IDs_temp=list_IDs_temp
+        )
+    else:
+        batch = self._data_generation(batch_size=self.batch_size)
+
+    # --- Post-process batch to ensure y is a list matching model outputs ---
+    # batch may be: (X, y) or (X, y, sample_weights) or something else.
+    try:
+        import numpy as _np
+    except Exception:
+        # numpy should already be imported at module level; this is a safeguard.
+        import numpy as _np
+
+    # If batch is not a tuple/list, return as-is
+    if not isinstance(batch, (list, tuple)) or len(batch) < 2:
+        return batch
+
+    # Unpack X, y and optionally sample_weights
+    X = batch[0]
+    y = batch[1]
+    sample_weights = batch[2] if len(batch) > 2 else None
+
+    # If y is already a list/tuple/dict, assume it's correct and return unchanged
+    if isinstance(y, (list, tuple, dict)):
+        if sample_weights is not None:
+            return X, y, sample_weights
+        return X, y
+
+    # Only attempt splitting when y is a 4D ndarray (B,H,W,C)
+    if not isinstance(y, _np.ndarray) or y.ndim != 4:
+        if sample_weights is not None:
+            return X, y, sample_weights
+        return X, y
+
+    # Now we have a stacked-label ndarray: split into two outputs
+    total_channels = int(y.shape[-1])
+
+    # Read splitting info from config (fall back to reasonable defaults)
+    cfg = getattr(self, "config", None)
+    if cfg is not None:
+        n_contour = int(getattr(cfg, "n_contour_classes", 0) or 0)
+        n_celltype = int(getattr(cfg, "n_celltype_classes", 0) or 0)
+        if n_celltype <= 1:
+            # treat <=1 as single-class / absent celltype head
+            n_celltype = 0
+        n_dist = 1 if getattr(cfg, "dist_regression", False) else 0
+    else:
+        n_contour = None
+        n_celltype = 0
+        n_dist = 0
+
+    # if n_contour missing or zero, try to infer from model if available in global
+    if not n_contour:
+        try:
+            # attempt to infer first head channel count from a global ciscamodel if defined
+            model = globals().get("ciscamodel", None)
+            if model is not None:
+                n_contour = int(model.keras_model.outputs[0].shape.as_list()[-1])
+        except Exception:
+            n_contour = None
+
+    # final fallback: if still unknown, split halfway
+    if not n_contour or n_contour <= 0:
+        n_contour = total_channels // 2
+
+    expected_second = n_dist + n_celltype
+    if expected_second > 0:
+        # take at most expected_second from remainder; if remainder larger include extras
+        take = min(expected_second, max(0, total_channels - n_contour))
+        y0 = y[..., :n_contour]
+        y1 = y[..., n_contour : n_contour + take]
+        if (n_contour + take) < total_channels:
+            # append extra leftover channels to y1
+            extra = y[..., n_contour + take :]
+            if extra.shape[-1] > 0:
+                y1 = _np.concatenate([y1, extra], axis=-1)
+    else:
+        # no explicit second-head composition known — take the remainder
+        y0 = y[..., :n_contour]
+        y1 = y[..., n_contour:]
+
+    new_y = [y0, y1]
+
+    # Optional: print small debug message (only once) to confirm splitting happened
+    if not hasattr(self, "_patched_split_warned"):
+        print("[DataGeneratorCISCA] auto-split stacked y into two outputs: "
+              f"y0_channels={y0.shape[-1]}, y1_channels={y1.shape[-1]}")
+        try:
+            self._patched_split_warned = True
+        except Exception:
+            pass
+
+    if sample_weights is not None:
+        return X, new_y, sample_weights
+    return X, new_y
+
 
     def _on_train_start(self):
         self.indexes = np.arange(len(self.list_IDs))
