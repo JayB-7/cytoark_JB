@@ -309,7 +309,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
 
 
 
-    '''
+    
     def __getitem__(self, index):
         "Generate one batch of data"
 
@@ -438,7 +438,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         if sample_weights is not None:
             return X, new_y, sample_weights
         return X, new_y
-
+    '''
 
     def _on_train_start(self):
         self.indexes = np.arange(len(self.list_IDs))
