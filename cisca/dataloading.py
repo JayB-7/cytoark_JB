@@ -309,6 +309,34 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         for i in range(len(self)):
             yield self[i]
 
+
+
+    def __getitem__(self, index):
+        # Generate batch indexes
+        indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
+        
+        # Find list of IDs for current batch
+        list_IDs_temp = [self.list_IDs[k] for k in indexes]
+        
+        # Compute actual batch size (might be smaller for last batch)
+        batch_size = len(list_IDs_temp)
+        
+        # Generate data for batch
+        X, y = self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
+        
+        # Split labels for CytoDArk0: two outputs expected by CISCA
+        y0 = y[..., :self.n_contour_classes]                                # Pixel classification mask (3 channels)
+        y1 = y[..., self.n_contour_classes : self.n_contour_classes + 4]    # Distance regression maps (4 channels)
+        
+        return X, (y0, y1)
+
+
+
+
+
+
+    '''
+    #CODE 5
     def __getitem__(self, index):
         X, y = self._data_generation(batch_size=..., list_IDs_temp=...)
     
@@ -317,11 +345,9 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
     
         # Only two outputs for CytoDArk0 dataset (no cell classification)
         return X, (y0, y1)
+    '''
 
 
-
-
-    
     '''
     #CODE 3
     def __getitem__(self, index):
