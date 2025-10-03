@@ -423,7 +423,8 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             y0 = y[..., :n_contour]
             y1 = y[..., n_contour:]
     
-        new_y = [y0, y1]
+        #new_y = [y0, y1]
+        new_y = (y0, y1)
     
         # Optional: print small debug message (only once) to confirm splitting happened
         if not hasattr(self, "_patched_split_warned"):
