@@ -314,10 +314,10 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
 
     #CODE 4 #PLEASE WORK
     def __getitem__(self, index):
-    """
-    Generate one batch of data for training with proper label splitting for multiple outputs.
-    """
-
+        """
+        Generate one batch of data for training with proper label splitting for multiple outputs.
+        """
+    
         if self.load_mode:
             # Select batch indexes
             indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
@@ -359,6 +359,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             self._split_warned = True
     
         return X, (y0, y1, y2)
+
 
 
     
