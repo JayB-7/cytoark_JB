@@ -309,6 +309,14 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         for i in range(len(self)):
             yield self[i]
 
+    def __getitem__(self, index):
+        X, y = self._data_generation(batch_size=..., list_IDs_temp=...)
+    
+        y0 = y[..., :self.n_contour_classes]  # Pixel segmentation mask, 3 classes
+        y1 = y[..., self.n_contour_classes:self.n_contour_classes + 4]  # Distance maps, 4 channels
+    
+        # Only two outputs for CytoDArk0 dataset (no cell classification)
+        return X, (y0, y1)
 
 
 
@@ -387,6 +395,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         return X, (y0, y1)
 
     '''
+    '''
     #CODE 4
     def __getitem__(self, index):
         X, y = self._data_generation(batch_size=self.batch_size, list_IDs_temp=self.list_IDs[index*self.batch_size : (index+1)*self.batch_size])
@@ -396,7 +405,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         y2 = y[..., self.n_contour_classes+4:]                         # cell classification mask
         
         return X, (y0, y1, y2)
-
+    '''
    
     '''
     # CODE 1
