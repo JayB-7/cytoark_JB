@@ -333,7 +333,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
     '''
 
     def __getitem__(self, index):
-    """Generate one batch of data (robust splitter + tuple outputs)."""
+        """Generate one batch of data (robust splitter + tuple outputs)."""
 
         # 1) Call original data generation logic as before
         if self.load_mode:
