@@ -329,14 +329,15 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             return self._data_generation(batch_size=self.batch_size)
     '''
 
+    
     def __getitem__(self, index):
         """Generate one batch of data.
     
         - Passes selected indices to _data_generation when in load_mode.
         - If the generator returns a single multi-channel y but the model expects
-          multiple outputs (self.model_output_channels), split y into outputs.
-        - If any channel(s) remain after splitting, append them to the LAST split
-          (this keeps weightmask channels that losses expect at the end).
+          multiple outputs (self.model_output_channels), return the FULL stacked y
+          replicated for each model output. This matches the loss functions'
+          expectation in this repo (they slice the stacked y internally).
         """
         # ensure indexes exist
         if not hasattr(self, "indexes"):
@@ -361,49 +362,18 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             # Unexpected return from _data_generation — return as-is to surface the problem
             return batch
     
-        # If y is a single ndarray but model has multiple outputs, split accordingly
+        # If y is a single ndarray and the model has multiple outputs, replicate the full stacked y
         if isinstance(y, np.ndarray) and getattr(self, "model_output_channels", None):
-            moc = list(self.model_output_channels)
-            total_expected = sum(moc)
-            y_channels = y.shape[-1]
-    
-            # Prepare empty list for splits
-            splits = []
-            idx = 0
-            for c in moc:
-                if idx + c <= y_channels:
-                    splits.append(y[..., idx : idx + c])
-                else:
-                    # Not enough channels left for this split: create zeros for required channels
-                    shape_fill = list(y.shape)
-                    shape_fill[-1] = c
-                    splits.append(np.zeros(shape_fill, dtype=y.dtype))
-                idx += c
-    
-            # If there are leftover channels, append them to the LAST split (important: weightmask)
-            if idx < y_channels:
-                leftover = y[..., idx:]
-                # concatenate leftover channels to the last split along channel axis
-                splits[-1] = np.concatenate([splits[-1], leftover], axis=-1)
-                if True:  # keep for debugging; change to False to suppress
-                    print(
-                        "Note: appended %d leftover y channel(s) to the last split to preserve weightmask/extra channels."
-                        % (y_channels - idx)
-                    )
-    
-            # Final y_out is a tuple matching model outputs
-            y_out = tuple(splits)
-    
+            # number of model outputs
+            n_outputs = len(self.model_output_channels)
+            # replicate the full stacked y for each model output
+            y_out = tuple([y] * n_outputs)
         else:
-            # Either y is already a tuple/list, or model_output_channels wasn't provided
+            # y already structured (tuple/list) or no model_output_channels provided
             y_out = y
     
-        # Keras expects (inputs, targets)
+        # Return (inputs, targets) as Keras expects
         return X.astype(np.float32), y_out
-
-
-
-
 
 
     
