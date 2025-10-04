@@ -123,6 +123,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         dir_distance_map_folder,
         instance_mask_folder,
         class_mask_folder,
+        model_output_channels=None,
     ):
         self.input_shape = input_shape
         self.n_input_channels = n_input_channels
@@ -170,6 +171,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         self.dir_distance_map_folder = dir_distance_map_folder
         self.instance_mask_folder = instance_mask_folder
         self.class_mask_folder = class_mask_folder
+        self.model_output_channels = model_output_channels
 
         if (self.load_mode == "valid") or (self.load_mode == "test"):
             self.random_crop = False
@@ -346,11 +348,73 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             list_IDs_temp = indexes
             batch_size = len(list_IDs_temp)
     
-            # return exactly what _data_generation returns (do NOT add a trailing comma)
-            return self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
+               
+        # make sure indexes exist (safety)
+        if not hasattr(self, "indexes"):
+            self._on_train_start()
+    
+        if self.load_mode:
+            start = index * self.batch_size
+            end = (index + 1) * self.batch_size
+            indexes = self.indexes[start:end]
+    
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+    
+            batch = self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
         else:
-            # non-load_mode keeps original behavior: _data_generation chooses samples internally
-            return self._data_generation(batch_size=self.batch_size)
+            batch = self._data_generation(batch_size=self.batch_size)
+    
+        # batch is usually (X, y) or one of the variants that include extras.
+        # Normalize to (X, y) pair first.
+        if isinstance(batch, tuple) and len(batch) >= 2:
+            X = batch[0]
+            y = batch[1]
+            extras = batch[2:] if len(batch) > 2 else []
+        else:
+            # If _data_generation returned something unexpected, just return it
+            return batch
+    
+        # If y is a single numpy array but model expects multiple outputs, split it.
+        if isinstance(y, np.ndarray) and self.model_output_channels is not None:
+            total_expected = sum(self.model_output_channels)
+            if y.shape[-1] != total_expected:
+                print(
+                    "Warning: generator y channels (%d) != sum(model_output_channels) (%d)."
+                    % (y.shape[-1], total_expected)
+                )
+                # Try best-effort: if y has one extra channel (weightmask), allow it.
+            # Perform splitting by channels:
+            splits = []
+            idx = 0
+            for c in self.model_output_channels:
+                if idx + c <= y.shape[-1]:
+                    splits.append(y[..., idx : idx + c])
+                else:
+                    # If not enough channels left, append zeros of required shape
+                    needed = c
+                    shape_fill = list(y.shape)
+                    shape_fill[-1] = needed
+                    print(
+                        f"Warning: not enough channels to create output of {c} channels. "
+                        "Filling with zeros for this output."
+                    )
+                    splits.append(np.zeros(shape_fill, dtype=y.dtype))
+                idx += c
+            # If any channels remain unused, warn
+            if idx < y.shape[-1]:
+                print(
+                    "Warning: %d channel(s) in generator y were not used when splitting to model outputs."
+                    % (y.shape[-1] - idx)
+                )
+            # Convert to tuple/list per Keras (tuple is fine)
+            y_out = tuple(splits)
+        else:
+            # y already structured (tuple/list) or no model_output_channels provided
+            y_out = y
+    
+        # Return same extras if present? Keras training expects (X, y) so return only that.
+        return X.astype(np.float32), y_out
 
 
 
