@@ -332,6 +332,8 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         return X, (y0, y1)
     '''
 
+    '''
+    #CODE 7
     def __getitem__(self, index):
         """Generate one batch of data (robust splitter + tuple outputs)."""
 
@@ -450,7 +452,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             return (X, new_y, sample_weights)
         return (X, new_y)
 
-
+    '''
 
     '''
     #CODE 5
