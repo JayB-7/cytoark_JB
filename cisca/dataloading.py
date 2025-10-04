@@ -310,7 +310,8 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             yield self[i]
 
 
-
+    '''
+    #CODE 6
     def __getitem__(self, index):
         # Generate batch indexes
         indexes = self.indexes[index * self.batch_size : (index + 1) * self.batch_size]
@@ -329,9 +330,125 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         y1 = y[..., self.n_contour_classes : self.n_contour_classes + 4]    # Distance regression maps (4 channels)
         
         return X, (y0, y1)
+    '''
 
+    def __getitem__(self, index):
+    """Generate one batch of data (robust splitter + tuple outputs)."""
 
-
+        # 1) Call original data generation logic as before
+        if self.load_mode:
+            indexes = self.indexes[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+            batch = self._data_generation(
+                batch_size=batch_size, list_IDs_temp=list_IDs_temp
+            )
+        else:
+            batch = self._data_generation(batch_size=self.batch_size)
+    
+        # 2) Post-process the produced batch to be tf.data / model-safe
+        import numpy as _np
+    
+        # If batch is not (X, y) style, return as-is
+        if not isinstance(batch, (list, tuple)) or len(batch) < 2:
+            return batch
+    
+        X = batch[0]
+        y = batch[1]
+        sample_weights = batch[2] if len(batch) > 2 else None
+    
+        # If y is already tuple/dict, or list -> convert to tuple and return (TF-safe)
+        if isinstance(y, tuple) or isinstance(y, dict):
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+        if isinstance(y, list):
+            y = tuple(y)
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+    
+        # If y is not a 4D ndarray, return as-is
+        if not isinstance(y, _np.ndarray) or y.ndim != 4:
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+    
+        # y is a stacked ndarray: shape (B, H, W, C_total)
+        total_channels = int(y.shape[-1])
+    
+        # ---- Determine exact channel sizes from the built model if possible ----
+        n_contour = None
+        n_second = None
+        try:
+            model_ref = globals().get("ciscamodel", None)
+            if model_ref is not None and hasattr(model_ref, "keras_model"):
+                model_out_shapes = [int(o.shape.as_list()[-1]) for o in model_ref.keras_model.outputs]
+                if len(model_out_shapes) >= 2:
+                    n_contour = model_out_shapes[0]
+                    n_second = model_out_shapes[1]
+                elif len(model_out_shapes) == 1:
+                    n_contour = model_out_shapes[0]
+                    n_second = total_channels - n_contour
+        except Exception:
+            n_contour = None
+            n_second = None
+    
+        # Fallback to config-based values if model info missing
+        if (n_contour is None) or (n_contour <= 0):
+            cfg = getattr(self, "config", None)
+            if cfg is not None:
+                try:
+                    n_contour = int(getattr(cfg, "n_contour_classes", 0) or 0)
+                except Exception:
+                    n_contour = None
+    
+        # Final fallback: ensure non-zero split
+        if (n_contour is None) or (n_contour <= 0):
+            n_contour = max(1, total_channels // 2)
+    
+        if (n_second is None) or (n_second <= 0):
+            n_second = max(0, total_channels - n_contour)
+    
+        # Validate / fix sums so we never produce a negative or overshoot split
+        if n_contour + n_second != total_channels:
+            if n_contour < total_channels:
+                n_second = total_channels - n_contour
+            else:
+                raise ValueError(
+                    f"Inconsistent channel counts: total_channels={total_channels}, "
+                    f"n_contour={n_contour}, n_second={n_second} -- cannot split."
+                )
+    
+        # Slice safely
+        if n_second > 0:
+            y0 = y[..., :n_contour]
+            y1 = y[..., n_contour : n_contour + n_second]
+        else:
+            y0 = y[..., :n_contour]
+            # create empty last-dim array for y1 (shape (..., 0))
+            y1 = _np.empty(y0.shape[:-1] + [0], dtype=y.dtype)
+    
+        # If there are leftover channels beyond the computed split, append them to y1
+        if (n_contour + n_second) < total_channels:
+            extra = y[..., n_contour + n_second :]
+            if extra.shape[-1] > 0:
+                y1 = _np.concatenate([y1, extra], axis=-1)
+    
+        # Convert to tuple (tf.data expects tuple/dict, not list)
+        new_y = (y0, y1)
+    
+        # One-time informational print so you can see actual channel split
+        if not hasattr(self, "_autofs_printed"):
+            try:
+                print(
+                    f"[DataGeneratorCISCA] auto-split stacked y into tuple outputs: "
+                    f"y0_channels={y0.shape[-1]}, y1_channels={y1.shape[-1]}, total={total_channels}"
+                )
+                self._autofs_printed = True
+            except Exception:
+                pass
+    
+        # Return preserving sample_weights
+        if sample_weights is not None:
+            return (X, new_y, sample_weights)
+        return (X, new_y)
 
 
 
