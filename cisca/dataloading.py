@@ -328,30 +328,35 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
     '''
 
     def __getitem__(self, index):
-    """Generate one batch of data.
+        """Generate one batch of data.
+    
+        This replacement ensures the selected indices are passed to _data_generation
+        when in load_mode, and avoids accidentally returning a one-element tuple
+        (caused by a trailing comma).
+        """
+        # make sure indexes exist (safety)
+        if not hasattr(self, "indexes"):
+            self._on_train_start()
+    
+        if self.load_mode:
+            start = index * self.batch_size
+            end = (index + 1) * self.batch_size
+            indexes = self.indexes[start:end]
+    
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+    
+            # return exactly what _data_generation returns (do NOT add a trailing comma)
+            return self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
+        else:
+            # non-load_mode keeps original behavior: _data_generation chooses samples internally
+            return self._data_generation(batch_size=self.batch_size)
 
-    This replacement ensures the selected indices are passed to _data_generation
-    when in load_mode, and avoids accidentally returning a one-element tuple
-    (caused by a trailing comma).
-    """
-    # make sure indexes exist (safety)
-    if not hasattr(self, "indexes"):
-        self._on_train_start()
 
-    if self.load_mode:
-        start = index * self.batch_size
-        end = (index + 1) * self.batch_size
-        indexes = self.indexes[start:end]
 
-        list_IDs_temp = indexes
-        batch_size = len(list_IDs_temp)
 
-        # return exactly what _data_generation returns (do NOT add a trailing comma)
-        return self._data_generation(batch_size=batch_size, list_IDs_temp=list_IDs_temp)
-    else:
-        # non-load_mode keeps original behavior: _data_generation chooses samples internally
-        return self._data_generation(batch_size=self.batch_size)
 
+    
 
     def _on_train_start(self):
         self.indexes = np.arange(len(self.list_IDs))
