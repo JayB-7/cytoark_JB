@@ -551,9 +551,8 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         
         return X, (y0, y1, y2)
     '''
-   
     '''
-    # CODE 1
+    # CODE 1 COPY
     def __getitem__(self, index):
         "Generate one batch of data"
 
@@ -571,6 +570,133 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         else:
             return self._data_generation(batch_size=self.batch_size)
     '''
+    
+    # CODE 1
+    def __getitem__(self, index):
+        
+        """Generate one batch of data (safe splitting to match model/loss)."""
+    
+        # 1) Call original data generation logic as before
+        if self.load_mode:
+            indexes = self.indexes[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+            list_IDs_temp = indexes
+            batch_size = len(list_IDs_temp)
+            batch = self._data_generation(
+                batch_size=batch_size, list_IDs_temp=list_IDs_temp
+            )
+        else:
+            batch = self._data_generation(batch_size=self.batch_size)
+    
+        # 2) Post-process to ensure y matches model outputs & loss expectations
+        import numpy as _np
+    
+        # If batch is not (X, y[ , sample_weights]) style, return as-is
+        if not isinstance(batch, (list, tuple)) or len(batch) < 2:
+            return batch
+    
+        X = batch[0]
+        y = batch[1]
+        sample_weights = batch[2] if len(batch) > 2 else None
+    
+        # If y already tuple/dict (correct) return (convert list->tuple)
+        if isinstance(y, tuple) or isinstance(y, dict):
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+        if isinstance(y, list):
+            y = tuple(y)
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+    
+        # If y is not a 4D ndarray, return as-is
+        if not isinstance(y, _np.ndarray) or y.ndim != 4:
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+    
+        total_channels = int(y.shape[-1])
+    
+        # --- Compute idx_shift exactly as reg_loss does ---
+        cfg = getattr(self, "config", None)
+        if cfg is None:
+            raise RuntimeError(
+                "DataGeneratorCISCA requires self.config to determine label splitting."
+            )
+    
+        n_contour = int(getattr(cfg, "n_contour_classes", 0) or 0)
+        n_celltype = int(getattr(cfg, "n_celltype_classes", 0) or 0)
+        idx_shift = n_contour + int(n_celltype > 1) * (n_celltype + 1)
+    
+        # --- Determine expected regression channels from the built model ---
+        model_ref = globals().get("ciscamodel", None)
+        if model_ref is None or not hasattr(model_ref, "keras_model"):
+            raise RuntimeError(
+                "Global 'ciscamodel' with a built keras_model must be available to determine expected channel sizes."
+            )
+        model_out_shapes = [int(o.shape.as_list()[-1]) for o in model_ref.keras_model.outputs]
+        if len(model_out_shapes) < 2:
+            # single-output model: return original y
+            return (X, y, sample_weights) if sample_weights is not None else (X, y)
+        reg_expected = model_out_shapes[1]  # expected channels in second head
+    
+        # expected minimum stacked channels: idx_shift + reg_expected + 1 (mask at last)
+        expected_min = idx_shift + reg_expected + 1
+    
+        # pad or truncate stacked y so we have exactly expected_min channels available for slicing
+        if total_channels < expected_min:
+            pad_c = expected_min - total_channels
+            pad_shape = list(y.shape[:-1]) + [pad_c]
+            pad_arr = _np.zeros(pad_shape, dtype=y.dtype)
+            y_full = _np.concatenate([y, pad_arr], axis=-1)
+            total_channels = expected_min
+        else:
+            # truncate extras beyond expected_min to avoid ambiguity
+            y_full = y[..., :expected_min]
+            total_channels = expected_min
+    
+        # Build y0 (contour head) and y1 (regression/aux head) using the same indices loss expects
+        # y0: first n_contour channels
+        if n_contour > 0:
+            y0 = y_full[..., :n_contour]
+        else:
+            y0 = _np.zeros(list(y_full.shape[:-1]) + [0], dtype=y_full.dtype)
+    
+        # y1: channels starting at idx_shift of length reg_expected
+        start = idx_shift
+        end = idx_shift + reg_expected
+        # Ensure not to include the last mask channel accidentally
+        last_possible = y_full.shape[-1] - 1
+        if end > last_possible:
+            end = min(max(start, last_possible), last_possible)
+        if end > start:
+            y1_slice = y_full[..., start:end]
+        else:
+            y1_slice = _np.empty(list(y_full.shape[:-1]) + [0], dtype=y_full.dtype)
+    
+        # Pad y1_slice to reg_expected if necessary
+        cur_ch = int(y1_slice.shape[-1]) if y1_slice.ndim == 4 else 0
+        if cur_ch < reg_expected:
+            pad_c2 = reg_expected - cur_ch
+            pad_shape2 = list(y_full.shape[:-1]) + [pad_c2]
+            pad_arr2 = _np.zeros(pad_shape2, dtype=y_full.dtype)
+            if cur_ch > 0:
+                y1 = _np.concatenate([y1_slice, pad_arr2], axis=-1)
+            else:
+                y1 = pad_arr2
+        else:
+            y1 = y1_slice
+    
+        # Final sanity check: output channels must match model expectations
+        if y0.shape[-1] != model_out_shapes[0] or y1.shape[-1] != model_out_shapes[1]:
+            raise ValueError(
+                f"After splitting/padding, channel mismatch: got y0={y0.shape[-1]} (expected {model_out_shapes[0]}), "
+                f"y1={y1.shape[-1]} (expected {model_out_shapes[1]}). idx_shift={idx_shift}, total_channels={total_channels}."
+            )
+    
+        # Return tuple (TF-safe)
+        new_y = (y0, y1)
+        if sample_weights is not None:
+            return (X, new_y, sample_weights)
+        return (X, new_y)
+
+    
 
     '''
     # CODE 2
