@@ -507,10 +507,27 @@ class CISCA(object):
             "class_mask_folder": self.class_mask_folder,
         }
 
+        '''
         self.train_generator = DataGeneratorCISCA(
             self.training_dataset, load_mode="train", **data_kwargs
         )
+        '''
+        # determine model output channel sizes if model already built
+        model_out_channels = None
+        try:
+            model_out_channels = [int(o.shape[-1]) for o in self.keras_model.outputs]
+        except Exception:
+            model_out_channels = None
+        
+        self.train_generator = DataGeneratorCISCA(
+            self.training_dataset,
+            load_mode="train",
+            model_output_channels=model_out_channels,
+            **data_kwargs
+        )
 
+
+        
         data_kwargs = {
             "input_shape": self.config.input_shape,
             "center_crop": self.config.center_crop,
@@ -537,9 +554,20 @@ class CISCA(object):
             "class_mask_folder": self.valid_class_mask_folder,
         }
 
+    
+        '''
         self.valid_generator = DataGeneratorCISCA(
             self.valid_dataset, load_mode="valid", **data_kwargs
         )
+        '''
+
+        self.valid_generator = DataGeneratorCISCA(
+            self.valid_dataset,
+            load_mode="valid",
+            model_output_channels=model_out_channels,
+            **data_kwargs
+        )
+
 
         if optimizer is None:
             optimizer = Adam(
