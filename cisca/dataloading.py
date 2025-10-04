@@ -1,3 +1,4 @@
+
 # ================================================================================================
 # Acknowledgments:
 # - Based on https://stanford.edu/~shervine/blog/keras-how-to-generate-data-on-the-fly
@@ -357,9 +358,6 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                 cell_class_mask = self.train_class[img_id]
             if (self.load_mode == "valid") or (self.load_mode == "train"):
                 msk = self.train_msk[img_id]
-
-                y_contour_batch[i] = msk
-                
                 if self.with_original:
                     homap = cv2.imread(
                         os.path.join(
@@ -425,14 +423,6 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                                 ),
                             ]
                         )
-
-                    dummy = np.zeros_like(msk)  # same H,W and n_contour_classes
-                    dist_stack = np.dstack([homap, vemap, tlmap, blmap, weightmask])  # adjust based on diag_dist
-                    y_dist_batch[i] = np.dstack([dummy, dist_stack])
-
-                    if self.multiclass:
-                        y_class_batch[i] = data['mask3']
-
                     if self.diag_dist:
                         y_orig[i] = np.dstack(
                             [msks, homap, vemap, tlmap, blmap, weightmask]
@@ -443,8 +433,6 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
 
                     else:
                         y_orig[i] = msks
-
-            
 
             if (self.load_mode == "valid") or (self.load_mode == "train"):
                 if self.multiclass:
