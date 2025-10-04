@@ -965,8 +965,8 @@ class CISCA(object):
             X_test, model_input_shape=input_shape, stride_ratio=stride_ratio
         )
 
-        del X_test
-        gc.collect()
+        #del X_test
+        #gc.collect()
 
         # Predict on tiles
         tot_tiles = X_tiles.shape[0]
@@ -976,6 +976,8 @@ class CISCA(object):
             y_pred = [[], [], []]
         else:
             y_pred = [[], []]
+
+        '''
         for i in range(0, num_pred):
             print("Processing batch {0} out of {1}".format(i + 1, num_pred))
             y_pred_subs = self.keras_model.predict(
@@ -994,6 +996,22 @@ class CISCA(object):
         y_pred[1] = np.vstack(y_pred[1])
         if self.multiclass:
             y_pred[2] = np.vstack(y_pred[2])
+        '''
+        # Predict in batches
+        for i in range(num_pred):
+            print(f"Processing batch {i + 1} of {num_pred}")
+            batch_tiles = X_tiles[i * tot_tiles_proc : min(tot_tiles, (i + 1) * tot_tiles_proc)]
+            batch_pred = self.keras_model.predict(batch_tiles, batch_size=batch_size)
+    
+            # Ensure batch_pred is always a list
+            if not isinstance(batch_pred, list):
+                batch_pred = [batch_pred]
+    
+            for j in range(len(batch_pred)):
+                y_pred[j].append(batch_pred[j])
+    
+        # Stack predictions
+        y_pred = [np.vstack(o) for o in y_pred]
 
         # Untile predictions
         y_pred = [
