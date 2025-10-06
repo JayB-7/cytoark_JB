@@ -742,7 +742,7 @@ class CISCA(object):
             monitor="val_loss",
             mode="min",
             verbose=0,
-            save_best_only=False,
+            save_best_only=True,
             save_weights_only=True,
             save_freq="epoch",
         )
