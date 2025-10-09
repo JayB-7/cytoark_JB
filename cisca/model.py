@@ -714,10 +714,24 @@ class CISCA(object):
         )
         
         '''
+        '''
         weights_filepath = os.path.join(
             self.logdir,
             "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.weights.h5",
         )
+        '''
+
+        # Save model weights permanently in Kaggle's output directory
+        weights_dir = "/kaggle/outputs"
+        os.makedirs(weights_dir, exist_ok=True)
+        
+        weights_filepath = os.path.join(
+            weights_dir,
+            f"best_weights__{self.config.string_id}__{{epoch:02d}}__{{val_loss:.5f}}.weights.h5"
+        )
+
+
+
         
 
         # tracking performance on training and validation test
