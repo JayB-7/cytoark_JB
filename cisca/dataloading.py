@@ -585,6 +585,47 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                             tlmap = crop_center(tlmap, self.center_crop)
                             blmap = crop_center(blmap, self.center_crop)
 
+
+            # --- BEGIN: replace weightmask computation with robust, cropped version ---
+            
+            # Determine which label array to derive the weightmask from.
+            # If augmentation produced mask2 (binarized), prefer that because it's the
+            # one used to compute distance maps when random_transformers is used.
+            if "mask2" in data:
+                full_label_for_weight = data["mask2"]
+            else:
+                full_label_for_weight = labelmap
+            
+            # Desired crop bounds (same as used for image and msk)
+            h0 = random_height
+            h1 = random_height + self.input_shape[0]
+            w0 = random_width
+            w1 = random_width + self.input_shape[1]
+            
+            # If label array is large enough, slice directly; otherwise create a
+            # same-size crop with center-crop + nearest-neighbor resize fallback.
+            if full_label_for_weight.shape[0] >= h1 and full_label_for_weight.shape[1] >= w1:
+                label_crop_for_weight = full_label_for_weight[h0:h1, w0:w1]
+            else:
+                # Center-crop fallback
+                cy = full_label_for_weight.shape[0] // 2
+                cx = full_label_for_weight.shape[1] // 2
+                fh0 = max(0, cy - self.input_shape[0] // 2)
+                fw0 = max(0, cx - self.input_shape[1] // 2)
+                label_crop_for_weight = full_label_for_weight[fh0:fh0 + self.input_shape[0], fw0:fw0 + self.input_shape[1]]
+                # If sizes still mismatch, resize (nearest to preserve labels)
+                if label_crop_for_weight.shape[0] != self.input_shape[0] or label_crop_for_weight.shape[1] != self.input_shape[1]:
+                    label_crop_for_weight = cv2.resize(label_crop_for_weight.astype(np.float32),
+                                                       (self.input_shape[1], self.input_shape[0]),
+                                                       interpolation=cv2.INTER_NEAREST).astype(full_label_for_weight.dtype)
+            
+            # If center_crop param is set, center-crop the label_crop as well
+            if self.center_crop is not None:
+                label_crop_for_weight = crop_center(label_crop_for_weight, self.center_crop)
+
+
+            ##### END OF NEW CODE
+
             labelmapBW = dilation(labelmap > 0, disk(6))
 
             weightmask = labelmapBW + (1 - labelmapBW) * 0.05
