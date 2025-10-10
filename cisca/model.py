@@ -141,7 +141,7 @@ class CISCA(object):
 
         self.data_folder = "/kaggle/input/cytodark0-20x/cytoD/20x/1024x1024/"
 
-        self.valid_data_folder = "/kaggle/input/cytodark0-20x/cytoD/20x/256x256/"
+        self.valid_data_folder = "/kaggle/input/cytodark0-20x/cytoD/20x/512x512/"
 
 
         '''
