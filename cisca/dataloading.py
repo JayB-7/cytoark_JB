@@ -452,7 +452,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                     labelmapBW = dilation(labelmap > 0, disk(6))
                     weightmask = labelmapBW + (1 - labelmapBW) * 0.05
 
-                    
+                    '''
                     # --- ADD THIS BLOCK (minimal change) ---
                     # ensure weightmask uses the same random crop as other maps (so H,W match)
                     weightmask = weightmask[
@@ -460,7 +460,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                         random_width  : random_width  + self.input_shape[1],
                     ]
                     # ----------------------------------------
-
+                    '''
 
                     if self.diag_dist:
                         tlmap = cv2.imread(
