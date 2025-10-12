@@ -452,16 +452,6 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                     labelmapBW = dilation(labelmap > 0, disk(6))
                     weightmask = labelmapBW + (1 - labelmapBW) * 0.05
 
-                    '''
-                    # --- ADD THIS BLOCK (minimal change) ---
-                    # ensure weightmask uses the same random crop as other maps (so H,W match)
-                    weightmask = weightmask[
-                        random_height : random_height + self.input_shape[0],
-                        random_width  : random_width  + self.input_shape[1],
-                    ]
-                    # ----------------------------------------
-                    '''
-
                     if self.diag_dist:
                         tlmap = cv2.imread(
                             os.path.join(
@@ -585,47 +575,6 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
                             tlmap = crop_center(tlmap, self.center_crop)
                             blmap = crop_center(blmap, self.center_crop)
 
-
-            # --- BEGIN: replace weightmask computation with robust, cropped version ---
-            
-            # Determine which label array to derive the weightmask from.
-            # If augmentation produced mask2 (binarized), prefer that because it's the
-            # one used to compute distance maps when random_transformers is used.
-            if "mask2" in data:
-                full_label_for_weight = data["mask2"]
-            else:
-                full_label_for_weight = labelmap
-            
-            # Desired crop bounds (same as used for image and msk)
-            h0 = random_height
-            h1 = random_height + self.input_shape[0]
-            w0 = random_width
-            w1 = random_width + self.input_shape[1]
-            
-            # If label array is large enough, slice directly; otherwise create a
-            # same-size crop with center-crop + nearest-neighbor resize fallback.
-            if full_label_for_weight.shape[0] >= h1 and full_label_for_weight.shape[1] >= w1:
-                label_crop_for_weight = full_label_for_weight[h0:h1, w0:w1]
-            else:
-                # Center-crop fallback
-                cy = full_label_for_weight.shape[0] // 2
-                cx = full_label_for_weight.shape[1] // 2
-                fh0 = max(0, cy - self.input_shape[0] // 2)
-                fw0 = max(0, cx - self.input_shape[1] // 2)
-                label_crop_for_weight = full_label_for_weight[fh0:fh0 + self.input_shape[0], fw0:fw0 + self.input_shape[1]]
-                # If sizes still mismatch, resize (nearest to preserve labels)
-                if label_crop_for_weight.shape[0] != self.input_shape[0] or label_crop_for_weight.shape[1] != self.input_shape[1]:
-                    label_crop_for_weight = cv2.resize(label_crop_for_weight.astype(np.float32),
-                                                       (self.input_shape[1], self.input_shape[0]),
-                                                       interpolation=cv2.INTER_NEAREST).astype(full_label_for_weight.dtype)
-            
-            # If center_crop param is set, center-crop the label_crop as well
-            if self.center_crop is not None:
-                label_crop_for_weight = crop_center(label_crop_for_weight, self.center_crop)
-
-
-            ##### END OF NEW CODE
-
             labelmapBW = dilation(labelmap > 0, disk(6))
 
             weightmask = labelmapBW + (1 - labelmapBW) * 0.05
@@ -726,4 +675,267 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
             )
         else:
             return X.astype(np.float32), y.astype(np.float32)
+
+'''
+# ================================================================================================
+# Refactored Data Loader for CISCA (Full Extended Version)
+# ================================================================================================
+
+import os
+import random
+import cv2
+import numpy as np
+import tensorflow as tf
+from skimage.measure import label
+from skimage.morphology import disk, dilation
+from cisca.imutils import dir_distance_map, dir_distance_map_fullrange
+
+
+def crop_center(img, cropx, cropy=None):
+    if cropy is None:
+        cropy = cropx
+    y, x = img.shape[0:2]
+    startx = x // 2 - cropx // 2
+    starty = y // 2 - cropy // 2
+    return img[starty:starty + cropy, startx:startx + cropx, ...]
+
+
+class DataGeneratorCISCA(tf.keras.utils.Sequence):
+    def __init__(
+        self,
+        list_IDs,
+        load_mode,
+        input_shape=(256, 256),
+        center_crop=None,
+        n_input_channels=3,
+        n_contour_classes=2,
+        n_celltype_classes=1,
+        dist_regression=False,
+        magnification="20x",
+        diag_dist=False,
+        batch_size=2,
+        steps_per_epoch=100,
+        shuffle=True,
+        random_crop=False,
+        random_transformers=None,
+        with_original=False,
+        with_label_map=False,
+        contour_mode="BW",
+        image_folder="",
+        rgb_contour_mask_folder="",
+        gray4c_contour_mask_folder="",
+        bw_contour_mask_folder="",
+        dir_distance_map_folder="",
+        instance_mask_folder="",
+        class_mask_folder="",
+    ):
+        # Basic configs
+        self.list_IDs = list_IDs
+        self.load_mode = load_mode
+        self.input_shape = input_shape
+        self.center_crop = center_crop
+        self.n_input_channels = n_input_channels
+        self.n_contour_classes = n_contour_classes
+        self.n_celltype_classes = n_celltype_classes
+        self.multiclass = self.n_celltype_classes > 1
+        self.dist_regression = dist_regression
+        self.diag_dist = diag_dist
+        self.magnification = magnification
+        self.batch_size = batch_size
+        self.steps_per_epoch = steps_per_epoch
+        self.shuffle = shuffle
+        self.random_crop = random_crop if load_mode == "train" else False
+        self.random_transformers = random_transformers
+        self.with_original = with_original
+        self.with_label_map = with_label_map
+        self.contour_mode = contour_mode
+
+        # Folders
+        self.image_folder = image_folder
+        self.rgb_contour_mask_folder = rgb_contour_mask_folder
+        self.gray4c_contour_mask_folder = gray4c_contour_mask_folder
+        self.bw_contour_mask_folder = bw_contour_mask_folder
+        self.dir_distance_map_folder = dir_distance_map_folder
+        self.instance_mask_folder = instance_mask_folder
+        self.class_mask_folder = class_mask_folder
+
+        # Output shape & channels
+        self.output_shape = (center_crop, center_crop) if center_crop else input_shape
+        if diag_dist:
+            self.n_output_channels = n_contour_classes + 4 + int(self.multiclass) * (1 + n_celltype_classes) + 1
+        elif dist_regression:
+            self.n_output_channels = n_contour_classes + 2 + int(self.multiclass) * (1 + n_celltype_classes) + 1
+        else:
+            self.n_output_channels = n_contour_classes + int(self.multiclass) * (1 + n_celltype_classes)
+
+        # Prepare data lists
+        self.train_img, self.train_msk, self.train_label, self.train_class = [], [], [], []
+        self.homap, self.vemap, self.tlmap, self.blmap = [], [], [], []
+
+        self._preload_data()
+        self._on_train_start()
+
+    def _preload_data(self):
+        for img_id in self.list_IDs:
+            # Load image
+            img_path = os.path.join(self.image_folder, f"{img_id}.png")
+            img = cv2.cvtColor(cv2.imread(img_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+            self.train_img.append(img)
+
+            # Contour masks
+            mask = None
+            if self.load_mode in ["train", "valid"]:
+                if self.contour_mode == "GRAY4C":
+                    mask = cv2.imread(os.path.join(self.gray4c_contour_mask_folder, f"{img_id}.png"), cv2.IMREAD_GRAYSCALE)
+                elif self.contour_mode == "RGB":
+                    mask = cv2.cvtColor(cv2.imread(os.path.join(self.rgb_contour_mask_folder, f"{img_id}.png"), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
+                else:  # BW or BWGAP
+                    labelmap = cv2.imread(os.path.join(self.instance_mask_folder, f"{img_id}.tiff"), -1)
+                    mask = np.zeros((*labelmap.shape, self.n_contour_classes))
+                    if self.contour_mode == "BWGAP":
+                        contourmap = cv2.imread(os.path.join(self.bw_contour_mask_folder, f"{img_id}.png"))
+                        mask[:, :, 0] = (contourmap[:, :, 0] > 0) * 255
+                        mask[:, :, 1] = (contourmap[:, :, 0] <= 0) * 255
+                    else:
+                        mask[:, :, 0] = (labelmap > 0) * 255
+                        mask[:, :, 1] = (labelmap <= 0) * 255
+                self.train_msk.append(mask)
+
+            # Label map
+            label_path = os.path.join(self.instance_mask_folder, f"{img_id}.tiff")
+            labelmap = cv2.imread(label_path, -1) if os.path.exists(label_path) else np.zeros(img.shape[:2], dtype=int)
+            self.train_label.append(labelmap)
+
+            # Cell type mask
+            if self.multiclass:
+                class_path = os.path.join(self.class_mask_folder, f"{img_id}.tiff")
+                cell_class_mask = cv2.imread(class_path, -1).astype(int) if os.path.exists(class_path) else (labelmap > 0).astype(int)
+                self.train_class.append(cell_class_mask)
+
+            # Distance maps
+            if self.dist_regression and self.random_transformers is None and self.load_mode in ["train", "valid"]:
+                homap = cv2.imread(os.path.join(self.dir_distance_map_folder, f"{img_id}_h.tiff"), -1)
+                vemap = cv2.imread(os.path.join(self.dir_distance_map_folder, f"{img_id}_v.tiff"), -1)
+                self.homap.append(homap)
+                self.vemap.append(vemap)
+                if self.diag_dist:
+                    tlmap = cv2.imread(os.path.join(self.dir_distance_map_folder, f"{img_id}_tl.tiff"), -1)
+                    blmap = cv2.imread(os.path.join(self.dir_distance_map_folder, f"{img_id}_bl.tiff"), -1)
+                    self.tlmap.append(tlmap)
+                    self.blmap.append(blmap)
+
+    def __len__(self):
+        return int(np.ceil(len(self.list_IDs) / self.batch_size))
+
+    def _on_train_start(self):
+        self.indexes = np.arange(len(self.list_IDs))
+        if self.shuffle and self.load_mode == "train":
+            np.random.shuffle(self.indexes)
+
+    def __getitem__(self, index):
+        indexes = self.indexes[index * self.batch_size:(index + 1) * self.batch_size]
+        return self._data_generation(indexes)
+
+    def _data_generation(self, indexes):
+        batch_size = len(indexes)
+        X = np.zeros((batch_size, *self.input_shape, self.n_input_channels), dtype=np.float32)
+        y = np.zeros((batch_size, *self.output_shape, self.n_output_channels), dtype=np.float32)
+
+        if self.with_original:
+            X_orig = np.zeros((batch_size, *self.input_shape, self.n_input_channels), dtype=np.float32)
+            y_orig = np.zeros((batch_size, *self.output_shape, self.n_output_channels), dtype=np.float32)
+
+        if self.with_label_map:
+            y_label_map = np.zeros((batch_size, *self.output_shape, 2 if self.multiclass else 1), dtype=np.float32)
+
+        names = []
+
+        for i, idx in enumerate(indexes):
+            img = self.train_img[idx]
+            labelmap = self.train_label[idx]
+            names.append(self.list_IDs[idx])
+
+            # Random cropping
+            h, w = self.input_shape
+            rh, rw = (random.randint(0, img.shape[0]-h), random.randint(0, img.shape[1]-w)) if self.random_crop else (0, 0)
+            X[i] = img[rh:rh+h, rw:rw+w, :] / 255.0
+
+            # With original
+            if self.with_original:
+                X_orig[i] = img / 255.0
+
+            # Masks and distances
+            if self.load_mode in ["train", "valid"]:
+                msk = self.train_msk[idx]
+                if self.multiclass:
+                    msk = np.dstack([msk, self.train_class[idx]])
+                y[i] = msk[rh:rh+h, rw:rw+w, :]
+
+                if self.with_original:
+                    homap = self.homap[idx] if self.dist_regression else None
+                    vemap = self.vemap[idx] if self.dist_regression else None
+                    tlmap = self.tlmap[idx] if self.diag_dist else None
+                    blmap = self.blmap[idx] if self.diag_dist else None
+
+                    maps = []
+                    if self.dist_regression:
+                        maps.extend([homap[rh:rh+h, rw:rw+w], vemap[rh:rh+h, rw:rw+w]])
+                    if self.diag_dist:
+                        maps.extend([tlmap[rh:rh+h, rw:rw+w], blmap[rh:rh+h, rw:rw+w]])
+
+                    weightmask = dilation(labelmap > 0, disk(6))
+                    weightmask = weightmask + (1 - weightmask) * 0.05
+                    maps.append(weightmask)
+
+                    y_orig[i] = np.dstack([msk[rh:rh+h, rw:rw+w, :], *maps])
+
+                if self.with_label_map:
+                    if self.multiclass:
+                        y_label_map[i, :, :, 0] = labelmap[rh:rh+h, rw:rw+w]
+                        y_label_map[i, :, :, 1] = self.train_class[idx][rh:rh+h, rw:rw+w]
+                    else:
+                        y_label_map[i, :, :, 0] = labelmap[rh:rh+h, rw:rw+w]
+
+        # Return based on flags
+        if self.with_original and self.with_label_map:
+            return X, y, X_orig, y_orig, y_label_map, names
+        elif self.with_original:
+            return X, y, X_orig, y_orig, names
+        elif self.with_label_map:
+            return X, (y, y_label_map, names)
+        else:
+            return X, y
+'''
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
