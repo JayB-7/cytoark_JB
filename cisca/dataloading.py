@@ -339,7 +339,7 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
           replicated for each model output. This matches the loss functions'
           expectation in this repo (they slice the stacked y internally).
         """
-        # ensure indexes exist
+        
         if not hasattr(self, "indexes"):
             self._on_train_start()
     
@@ -353,26 +353,20 @@ class DataGeneratorCISCA(tf.keras.utils.Sequence):
         else:
             batch = self._data_generation(batch_size=self.batch_size)
     
-        # Normalize batch to (X, y, *extras)
+        
         if isinstance(batch, tuple) and len(batch) >= 2:
             X = batch[0]
             y = batch[1]
             extras = batch[2:] if len(batch) > 2 else []
         else:
-            # Unexpected return from _data_generation — return as-is to surface the problem
             return batch
     
-        # If y is a single ndarray and the model has multiple outputs, replicate the full stacked y
         if isinstance(y, np.ndarray) and getattr(self, "model_output_channels", None):
-            # number of model outputs
             n_outputs = len(self.model_output_channels)
-            # replicate the full stacked y for each model output
             y_out = tuple([y] * n_outputs)
         else:
-            # y already structured (tuple/list) or no model_output_channels provided
             y_out = y
     
-        # Return (inputs, targets) as Keras expects
         return X.astype(np.float32), y_out
 
 
