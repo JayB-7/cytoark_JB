@@ -724,7 +724,8 @@ class CISCA(object):
         # Save model weights permanently in Kaggle's output directory
         #weights_dir = "/kaggle/outputs"
 
-        weights_dir = "/kaggle/working/cytoark_JB/models"
+        #weights_dir = "/kaggle/working/cytoark_JB/models"
+        weights_dir = "/kaggle/working/cytoark_JB/models/newtrainedmodel"
         os.makedirs(weights_dir, exist_ok=True)
         
         weights_filepath = os.path.join(
