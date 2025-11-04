@@ -424,6 +424,7 @@ def get_pq(true, pred, match_iou=0.5):  # , remap=True
         [tp, fp, fn],
         paired_iou.sum(),
         [paired_true, unpaired_pred, unpaired_true],
+        paired_iou     #CHANGED CODE
     )
 
 
