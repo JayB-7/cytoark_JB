@@ -730,7 +730,7 @@ class CISCA(object):
         
         weights_filepath = os.path.join(
             weights_dir,
-            f"best_weights__{self.config.string_id}__{{epoch:02d}}__{{val_loss:.5f}}.weights.h5"
+            "weights__" + self.config.string_id + "__{epoch:02d}__{val_loss:.5f}.weights.h5",
         )
 
 
